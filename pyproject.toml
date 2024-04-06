@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "fraud-detection"
+version = "0.1.0"
+description = ""
+authors = ["anya-mb <anna.beketova.ml@gmail.com>"]
+readme = "README.md"
+packages = [{include = "fraud_detection"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+jupyter = "^1.0.0"
+pandas = "^2.2.1"
+numpy = "^1.26.4"
+matplotlib = "^3.8.4"
+scikit-learn = "^1.4.1.post1"
+tqdm = "^4.66.2"
+seaborn = "^0.13.2"
+lightgbm = "^4.3.0"
+xgboost = "^2.0.3"
+colorama = "^0.4.6"
+scipy = "^1.13.0"
+aws-cdk-lib = "2.114.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
