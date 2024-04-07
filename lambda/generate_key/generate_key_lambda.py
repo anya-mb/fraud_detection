@@ -1,3 +1,4 @@
+import os
 import json
 import random
 import string
@@ -10,9 +11,6 @@ import boto3
 # Create logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-REQUESTS_TABLE_NAME = "requests_table"
 
 
 def get_random_id() -> str:
@@ -42,9 +40,9 @@ def save_to_dynamodb_table(table_name: str, key_id: str, request_params: dict):
 
     data_to_add = {
         "key_id": key_id,
-        "request_start_time": datetime_sort_key,
-        "request_params": json.dumps(request_params),
-        "request_status": "In progress",
+        "creation_time": datetime_sort_key,
+        "params": json.dumps(request_params),
+        "status": "In progress",
     }
 
     table.put_item(Item=data_to_add)
@@ -52,7 +50,7 @@ def save_to_dynamodb_table(table_name: str, key_id: str, request_params: dict):
     logger.debug(f"Added data: {data_to_add}")
 
 
-def lambda_generate_key(event, context):
+def handler(event, context):
     """
     Lambda function to generate key
     """
@@ -68,20 +66,21 @@ def lambda_generate_key(event, context):
         logger.debug(f"Random id: {random_id}")
 
         # Saving to database
+        table_name = os.environ["REQUESTS_TABLE_NAME"]
         save_to_dynamodb_table(
-            table_name=REQUESTS_TABLE_NAME, key_id=random_id, request_params=input_data
+            table_name=table_name, key_id=random_id, request_params=input_data
         )
 
         # Constructing the success response
         response = {
             "statusCode": HTTPStatus.OK.value,
-            "body": json.dumps({"key_id": random_id}, indent=2),
+            "body": json.dumps({"request_id": random_id}, indent=2),
             "headers": {"content-type": "application/json"},
         }
     except Exception as e:
         # Constructing the error response
         response = {
-            "statusCode": 500,
+            "statusCode": HTTPStatus.INTERNAL_SERVER_ERROR.value,
             "body": json.dumps({"error": str(e)}),
             "headers": {"Content-Type": "application/json"},
         }

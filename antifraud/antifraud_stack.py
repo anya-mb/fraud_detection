@@ -20,31 +20,49 @@ class AntiFraudStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        # dynamodb table to store all the requests info
+        requests_table = dynamodb.TableV2(
+            self,
+            "RequestsTable",
+            table_name="requests_table_dynamodb",
+            partition_key=dynamodb.Attribute(
+                name="key_id", type=dynamodb.AttributeType.STRING
+            ),
+        )
+
         # POST lambda to generate key and store request in database
         lambda_generate_key = lambda_.Function(
             self,
             "AntifraudFunctionGenerate",
             runtime=lambda_.Runtime.PYTHON_3_9,
             code=lambda_.Code.from_asset(os.path.join(DIRNAME, "lambda/generate_key")),
-            handler="generate_key_lambda.lambda_generate_key",
+            handler="generate_key_lambda.handler",
             timeout=Duration.seconds(30),
             memory_size=256,
+            environment={
+                "REQUESTS_TABLE_NAME": requests_table.table_name,
+            },
         )
 
-        requests_table = dynamodb.TableV2(
+        # GET lambda to check the status of request in database and send status or result back
+        lambda_check_status = lambda_.Function(
             self,
-            "RequestsTable",
-            table_name="requests_table",
-            partition_key=dynamodb.Attribute(
-                name="key_id", type=dynamodb.AttributeType.STRING
-            ),
-            sort_key=dynamodb.Attribute(
-                name="request_start_time", type=dynamodb.AttributeType.STRING
-            ),
+            "AntifraudFunctionCheckStatus",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset(os.path.join(DIRNAME, "lambda/check_status")),
+            handler="check_status_lambda.handler",
+            timeout=Duration.seconds(30),
+            memory_size=256,
+            environment={
+                "REQUESTS_TABLE_NAME": requests_table.table_name,
+            },
         )
 
+        # Granting lambdas permissions for the database
         requests_table.grant_read_write_data(lambda_generate_key)
+        requests_table.grant_read_data(lambda_check_status)
 
+        # Configure API Gateway
         http_api = _apigw.HttpApi(
             self,
             "MyHttpApi",
@@ -56,10 +74,18 @@ class AntiFraudStack(Stack):
         )
 
         http_api.add_routes(
-            path="/gen_key",
+            path="/transaction",
             methods=[_apigw.HttpMethod.POST],
             integration=_integrations.HttpLambdaIntegration(
                 "LambdaProxyIntegration", handler=lambda_generate_key
+            ),
+        )
+
+        http_api.add_routes(
+            path="/transaction/{key_id}",
+            methods=[_apigw.HttpMethod.GET],
+            integration=_integrations.HttpLambdaIntegration(
+                "LambdaProxyIntegration", handler=lambda_check_status
             ),
         )
 
