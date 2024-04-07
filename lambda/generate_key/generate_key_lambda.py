@@ -12,6 +12,10 @@ import boto3
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# Initialize the boto3 client for SQS
+sqs_client = boto3.client("sqs")
+queue_url = "https://sqs.us-east-1.amazonaws.com/381491929461/KeyIdQueue"
+
 
 def get_random_id() -> str:
     """
@@ -71,12 +75,28 @@ def handler(event, context):
             table_name=table_name, key_id=random_id, request_params=input_data
         )
 
+        message = {"request_id": random_id}
+
+        # Sending the message to SQS
+        sqs_response = sqs_client.send_message(
+            QueueUrl=queue_url,
+            # MessageBody=str(message)  # The message body has to be a string
+            MessageBody=json.dumps(message, indent=2),
+        )
+
+        if sqs_response is None:
+            logger.info("Message ID:", sqs_response["MessageId"])
+
+        # # Log the message ID of the message sent
+        # logger.info("Message ID:", sqs_response['MessageId'])
+
         # Constructing the success response
         response = {
             "statusCode": HTTPStatus.OK.value,
-            "body": json.dumps({"request_id": random_id}, indent=2),
+            "body": json.dumps(message, indent=2),
             "headers": {"content-type": "application/json"},
         }
+
     except Exception as e:
         # Constructing the error response
         response = {

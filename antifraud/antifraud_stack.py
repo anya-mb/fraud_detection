@@ -6,6 +6,8 @@ from aws_cdk import (
     aws_apigatewayv2_integrations as _integrations,
     CfnOutput,
     aws_dynamodb as dynamodb,
+    aws_sqs as sqs,
+    aws_lambda_event_sources as lambda_event_sources,
 )
 
 import os
@@ -61,6 +63,40 @@ class AntiFraudStack(Stack):
         # Granting lambdas permissions for the database
         requests_table.grant_read_write_data(lambda_generate_key)
         requests_table.grant_read_data(lambda_check_status)
+
+        queue = sqs.Queue(
+            self,
+            "MyQueue",
+            queue_name="KeyIdQueue",
+            visibility_timeout=Duration.seconds(300),
+        )
+
+        # Grant the Lambda function permissions to write to the SQS queue
+        queue.grant_send_messages(lambda_generate_key)
+
+        lambda_calculate_prediction = lambda_.Function(
+            self,
+            "AntifraudFunctionCalculatePrediction",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset(
+                os.path.join(DIRNAME, "lambda/calculate_prediction")
+            ),
+            handler="check_status_lambda.handler",
+            timeout=Duration.seconds(30),
+            memory_size=256,
+            environment={
+                "REQUESTS_TABLE_NAME": requests_table.table_name,
+            },
+        )
+
+        lambda_calculate_prediction.add_event_source(
+            lambda_event_sources.SqsEventSource(queue)
+        )
+
+        # lambda_function.add_event_source(event_sources.SqsEventSource(queue,
+        #                                                               batch_size=5
+        #                                                               # Number of messages to process per Lambda invocation, adjust as needed
+        #                                                               ))
 
         # Configure API Gateway
         http_api = _apigw.HttpApi(
