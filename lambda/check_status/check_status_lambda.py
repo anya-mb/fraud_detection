@@ -65,7 +65,7 @@ def handler(event, context) -> dict:
 
         response = {
             "statusCode": HTTPStatus.OK.value,
-            "body": json.dumps(result, indent=2),
+            "body": json.dumps(result, indent=2, cls=DecimalEncoder),
             "headers": {"content-type": "application/json"},
         }
     except Exception as e:

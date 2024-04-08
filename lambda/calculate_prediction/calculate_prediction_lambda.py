@@ -47,9 +47,9 @@ def handler(event, context) -> dict:
         )
         for record in event["Records"]:
             # Process each message
-            result = json.loads(record["body"])
-            logger.info(f"result: {json.dumps(result, indent=2)}")
-            transaction_id_list.append(result.get("transaction_id"))
+            transaction_dict = json.loads(record["body"])
+            logger.info(f"transaction_dict: {json.dumps(transaction_dict, indent=2)}")
+            transaction_id_list.append(transaction_dict.get("transaction_id"))
 
         logger.info(f"transaction_id_list: {transaction_id_list}")
 
@@ -57,8 +57,16 @@ def handler(event, context) -> dict:
         table_name = os.environ["REQUESTS_TABLE_NAME"]
         logger.info(f"Table name: {table_name}")
 
+        # request = {
+        #     "transactions_table": {
+        #         "Keys": [
+        #             {"transaction_id": {"S": value}} for value in transaction_id_list
+        #         ],
+        #     }
+        # }
+
         request = {
-            "transactions_table": {
+            table_name: {
                 "Keys": [
                     {"transaction_id": {"S": value}} for value in transaction_id_list
                 ],
@@ -72,14 +80,72 @@ def handler(event, context) -> dict:
 
         logger.info(f"response after batch: {json.dumps(response, indent=2)}")
 
+        transactions_list = []
+        status_list = []
+        params_list = []
+        creation_time_list = []
+
+        data_to_add = {"transaction_id": [], "rooms": [], "area": [], "floor": []}
+
         # Access the returned items
         items = response["Responses"][table_name]
         for item in items:
             logger.info(f"Item: {item}")
 
+            transaction_id = item.get("transaction_id").get("S")
+            transactions_list.append(transaction_id)
+
+            creation_time = item.get("creation_time").get("S")
+            creation_time_list.append(creation_time)
+
+            params = item.get("params").get("S")
+            params_list.append(params)
+            logger.info("params: ")
+            logger.info(f"params: {params}")
+
+            params = json.loads(params)
+
+            data_to_add["transaction_id"].append(transaction_id)
+            data_to_add["rooms"].append(params["rooms"])
+            data_to_add["area"].append(params["area"])
+            data_to_add["floor"].append(params["floor"])
+
+            status_list.append(item.get("status").get("S"))
+
+            logger.info(f"transaction_id: {transaction_id} ready")
+
+        logger.info(f"data_to_add: {json.dumps(data_to_add, indent=2)}")
+        logger.info(f"status_list: {json.dumps(status_list, indent=2)}")
+
+        logger.info(f"transactions_list: {json.dumps(transactions_list, indent=2)}")
+
+        update_requests = []
+        prediction_value = 10
+
+        for item_transaction_id, item_params, item_creation_time in zip(
+            transactions_list, params_list, creation_time_list
+        ):
+            new_item = {
+                "transaction_id": {"S": item_transaction_id},
+                "status": {"S": REQUEST_STATUS_DONE},
+                "prediction": {"N": str(prediction_value)},
+                "params": {"S": item_params},
+                "creation_time": {"S": item_creation_time},
+            }
+            update_requests.append({"PutRequest": {"Item": new_item}})
+
+        # DynamoDB batch write request limit is 25 per batch
+        # Assuming len(update_requests) <= 25 for simplicity
+        # update_response = dynamodb.batch_write_item(RequestItems={'transactions_table': update_requests})
+        update_response = dynamodb.batch_write_item(
+            RequestItems={table_name: update_requests}
+        )
+
+        logger.info(f"update_response: {json.dumps(update_response, indent=2)}")
+
         response = {
             "statusCode": HTTPStatus.OK.value,
-            "body": json.dumps(result, indent=2),
+            "body": json.dumps(update_response, indent=2),
             "headers": {"content-type": "application/json"},
         }
     except Exception as e:
