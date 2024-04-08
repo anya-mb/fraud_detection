@@ -24,4 +24,4 @@ data = pd.DataFrame({"rooms": rooms, "area": area, "floor": floor, "price": pric
 print(data.head())
 
 # Save to a CSV file
-data.to_csv("../data/fraud_detection_data.csv", index=False)
+data.to_csv("../data/house_pricing_data.csv", index=False)

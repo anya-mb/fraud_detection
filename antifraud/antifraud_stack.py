@@ -40,7 +40,7 @@ class AntiFraudStack(Stack):
             code=lambda_.Code.from_asset(os.path.join(DIRNAME, "lambda/generate_key")),
             handler="generate_key_lambda.handler",
             timeout=Duration.seconds(30),
-            memory_size=256,
+            memory_size=128,
             environment={
                 "REQUESTS_TABLE_NAME": requests_table.table_name,
             },
@@ -54,7 +54,7 @@ class AntiFraudStack(Stack):
             code=lambda_.Code.from_asset(os.path.join(DIRNAME, "lambda/check_status")),
             handler="check_status_lambda.handler",
             timeout=Duration.seconds(30),
-            memory_size=256,
+            memory_size=128,
             environment={
                 "REQUESTS_TABLE_NAME": requests_table.table_name,
             },
@@ -62,18 +62,31 @@ class AntiFraudStack(Stack):
 
         lambda_calculate_prediction = lambda_.Function(
             self,
-            "AntifraudFunctionCalculatePrediction",
-            runtime=lambda_.Runtime.PYTHON_3_9,
-            code=lambda_.Code.from_asset(
+            "MLLambda",
+            runtime=lambda_.Runtime.FROM_IMAGE,
+            code=lambda_.Code.from_asset_image(
                 os.path.join(DIRNAME, "lambda/calculate_prediction")
             ),
-            handler="calculate_prediction_lambda.handler",
-            timeout=Duration.seconds(30),
+            handler=lambda_.Handler.FROM_IMAGE,
+            timeout=Duration.seconds(60),
             memory_size=256,
-            environment={
-                "REQUESTS_TABLE_NAME": requests_table.table_name,
-            },
+            environment={"REQUESTS_TABLE_NAME": requests_table.table_name},
         )
+
+        # lambda_calculate_prediction = lambda_.Function(
+        #     self,
+        #     "AntifraudFunctionCalculatePrediction",
+        #     runtime=lambda_.Runtime.PYTHON_3_9,
+        #     code=lambda_.Code.from_asset(
+        #         os.path.join(DIRNAME, "lambda/calculate_prediction")
+        #     ),
+        #     handler="calculate_prediction_lambda.handler",
+        #     timeout=Duration.seconds(30),
+        #     memory_size=256,
+        #     environment={
+        #         "REQUESTS_TABLE_NAME": requests_table.table_name,
+        #     },
+        # )
 
         # Granting lambdas permissions for the database
         requests_table.grant_read_write_data(lambda_generate_key)
@@ -84,8 +97,8 @@ class AntiFraudStack(Stack):
             self,
             "MyQueue",
             queue_name="KeyIdQueue",
-            visibility_timeout=Duration.seconds(300),
-            receive_message_wait_time=Duration.seconds(10),
+            visibility_timeout=Duration.seconds(60),
+            # receive_message_wait_time=Duration.seconds(10),
         )
 
         # Grant the Lambda function permissions to write to the SQS queue
@@ -95,7 +108,7 @@ class AntiFraudStack(Stack):
             event_sources.SqsEventSource(
                 queue,
                 max_batching_window=Duration.seconds(60),
-                batch_size=3,  # Number of messages to process per Lambda invocation
+                batch_size=25,  # Number of messages to process per Lambda invocation
             )
         )
 
