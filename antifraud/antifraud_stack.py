@@ -7,7 +7,7 @@ from aws_cdk import (
     CfnOutput,
     aws_dynamodb as dynamodb,
     aws_sqs as sqs,
-    aws_lambda_event_sources as lambda_event_sources,
+    aws_lambda_event_sources as event_sources,
 )
 
 import os
@@ -26,9 +26,9 @@ class AntiFraudStack(Stack):
         requests_table = dynamodb.TableV2(
             self,
             "RequestsTable",
-            table_name="requests_table_dynamodb",
+            table_name="transactions_table",
             partition_key=dynamodb.Attribute(
-                name="key_id", type=dynamodb.AttributeType.STRING
+                name="transaction_id", type=dynamodb.AttributeType.STRING
             ),
         )
 
@@ -60,20 +60,6 @@ class AntiFraudStack(Stack):
             },
         )
 
-        # Granting lambdas permissions for the database
-        requests_table.grant_read_write_data(lambda_generate_key)
-        requests_table.grant_read_data(lambda_check_status)
-
-        queue = sqs.Queue(
-            self,
-            "MyQueue",
-            queue_name="KeyIdQueue",
-            visibility_timeout=Duration.seconds(300),
-        )
-
-        # Grant the Lambda function permissions to write to the SQS queue
-        queue.grant_send_messages(lambda_generate_key)
-
         lambda_calculate_prediction = lambda_.Function(
             self,
             "AntifraudFunctionCalculatePrediction",
@@ -81,7 +67,7 @@ class AntiFraudStack(Stack):
             code=lambda_.Code.from_asset(
                 os.path.join(DIRNAME, "lambda/calculate_prediction")
             ),
-            handler="check_status_lambda.handler",
+            handler="calculate_prediction_lambda.handler",
             timeout=Duration.seconds(30),
             memory_size=256,
             environment={
@@ -89,14 +75,29 @@ class AntiFraudStack(Stack):
             },
         )
 
-        lambda_calculate_prediction.add_event_source(
-            lambda_event_sources.SqsEventSource(queue)
+        # Granting lambdas permissions for the database
+        requests_table.grant_read_write_data(lambda_generate_key)
+        requests_table.grant_read_data(lambda_check_status)
+        requests_table.grant_read_write_data(lambda_calculate_prediction)
+
+        queue = sqs.Queue(
+            self,
+            "MyQueue",
+            queue_name="KeyIdQueue",
+            visibility_timeout=Duration.seconds(300),
+            receive_message_wait_time=Duration.seconds(10),
         )
 
-        # lambda_function.add_event_source(event_sources.SqsEventSource(queue,
-        #                                                               batch_size=5
-        #                                                               # Number of messages to process per Lambda invocation, adjust as needed
-        #                                                               ))
+        # Grant the Lambda function permissions to write to the SQS queue
+        queue.grant_send_messages(lambda_generate_key)
+
+        lambda_calculate_prediction.add_event_source(
+            event_sources.SqsEventSource(
+                queue,
+                max_batching_window=Duration.seconds(60),
+                batch_size=3,  # Number of messages to process per Lambda invocation
+            )
+        )
 
         # Configure API Gateway
         http_api = _apigw.HttpApi(

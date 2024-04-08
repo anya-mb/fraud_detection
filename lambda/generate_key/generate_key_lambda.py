@@ -33,7 +33,7 @@ def get_dynamodb_table(table_name: str) -> object:
     return table
 
 
-def save_to_dynamodb_table(table_name: str, key_id: str, request_params: dict):
+def save_to_dynamodb_table(table_name: str, transaction_id: str, request_params: dict):
     """
     Function to save a dictionary to DynamoDB table
     """
@@ -43,7 +43,7 @@ def save_to_dynamodb_table(table_name: str, key_id: str, request_params: dict):
     datetime_sort_key = datetime.utcnow().isoformat()
 
     data_to_add = {
-        "key_id": key_id,
+        "transaction_id": transaction_id,
         "creation_time": datetime_sort_key,
         "params": json.dumps(request_params),
         "status": "In progress",
@@ -72,23 +72,20 @@ def handler(event, context):
         # Saving to database
         table_name = os.environ["REQUESTS_TABLE_NAME"]
         save_to_dynamodb_table(
-            table_name=table_name, key_id=random_id, request_params=input_data
+            table_name=table_name, transaction_id=random_id, request_params=input_data
         )
 
-        message = {"request_id": random_id}
+        message = {"transaction_id": random_id}
 
         # Sending the message to SQS
         sqs_response = sqs_client.send_message(
             QueueUrl=queue_url,
-            # MessageBody=str(message)  # The message body has to be a string
             MessageBody=json.dumps(message, indent=2),
         )
 
         if sqs_response is None:
+            # Log the message ID of the message sent
             logger.info("Message ID:", sqs_response["MessageId"])
-
-        # # Log the message ID of the message sent
-        # logger.info("Message ID:", sqs_response['MessageId'])
 
         # Constructing the success response
         response = {

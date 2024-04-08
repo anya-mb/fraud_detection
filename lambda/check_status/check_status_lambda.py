@@ -46,11 +46,11 @@ def handler(event, context) -> dict:
 
         requests_table = get_dynamodb_table(table_name)
 
-        key_id = event.get("pathParameters")["key_id"]
-        logger.debug(f"key_id: {key_id}")
+        transaction_id = event.get("pathParameters")["key_id"]
+        logger.debug(f"transaction_id: {transaction_id}")
 
         # Extracting the request from the table
-        response = requests_table.get_item(Key={"key_id": key_id})
+        response = requests_table.get_item(Key={"transaction_id": transaction_id})
         request_data = response.get("Item", {})
         json_request_data = json.dumps(request_data, cls=DecimalEncoder)
         logger.debug(f"json_request_data: {json_request_data}")
